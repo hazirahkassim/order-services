@@ -2,10 +2,12 @@ import React, { useState } from "react";
 import {TextField,Button,FormControl,Typography,Box} from "@mui/material";
 import { db } from "../firebase";
 import { doc, updateDoc, serverTimestamp } from "firebase/firestore";
-import { useNavigate } from "react-router-dom";
+import { useNavigate, useLocation } from "react-router-dom";
 
-const WorkDoneForm = ({ selectedJob }) => {
+const WorkDoneForm = (props) => {
   const navigate = useNavigate();
+  const location = useLocation();
+  const selectedJob = props.selectedJob || location.state?.selectedJob;
 
   const [formData, setFormData] = useState({
     workDone: "",
@@ -22,21 +24,33 @@ const WorkDoneForm = ({ selectedJob }) => {
 
   const handleSubmit = async (e) => {
     e.preventDefault();
-    if (!selectedJob) return alert("No job selected");
+
+    if (!selectedJob || !selectedJob.orderNo) {
+      alert("Job information is missing or invalid.");
+      console.error("selectedJob missing:", selectedJob);
+      return;
+    }
 
     try {
       const jobRef = doc(db, "orders", selectedJob.orderNo);
 
-      await updateDoc(jobRef, {
-        ...formData,
-        status: "Job Done", 
+      const payload = {
+        workDone: formData.workDone,
+        extraCharges: formData.extraCharges ? parseFloat(formData.extraCharges): 0,
+        finalAmount: formData.finalAmountn? parseFloat(formData.finalAmount) : 0,
+        remarks: formData.remarks || "",
+        technician: formData.technician || "",
+        timestamp: formData.timestamp,
+        status: "Job Done",
         completedAt: serverTimestamp(),
-      });
+      };
+      console.log("Submitting payload:", payload);
 
+      await updateDoc(jobRef, payload);
       const time = new Date().toLocaleTimeString();
       const message = `Hi ${selectedJob.customerName}, job ${selectedJob.orderNo} is completed by Technician ${formData.technician} at ${time}. Please check and leave feedback. Thank you!`;
 
-      const phone = selectedJob.phone?.replace(/\D/g, ""); 
+      const phone = selectedJob.phone?.replace(/\D/g, "");
       if (phone && phone.length >= 9) {
         const encodedMsg = encodeURIComponent(message);
         const waLink = `https://wa.me/6${phone}?text=${encodedMsg}`;
@@ -45,7 +59,7 @@ const WorkDoneForm = ({ selectedJob }) => {
         alert("Missing or invalid customer phone number.");
       }
 
-      const managerNumber = "601160528986"; 
+      const managerNumber = "601160528986";
       const managerMsg = `Job ${selectedJob.orderNo} completed by ${formData.technician} at ${time}. Please verify and follow up.`;
       const waManagerLink = `https://wa.me/${managerNumber}?text=${encodeURIComponent(managerMsg)}`;
       window.open(waManagerLink, "_blank");
@@ -59,10 +73,19 @@ const WorkDoneForm = ({ selectedJob }) => {
     }
   };
 
+  if (!selectedJob) {
+    return (
+      <Box sx={{ p: 2, maxWidth: 500, margin: "auto" }}>
+        <Typography color="error">No job selected. Please return to the job list. </Typography>
+        <Button variant="contained" onClick={() => navigate("/technician")}>Back to Job List</Button>
+      </Box>
+    );
+  }
+
   return (
     <Box sx={{ p: 2, maxWidth: 500, margin: "auto" }}>
       <Typography variant="h5" gutterBottom>
-        Complete Job: {selectedJob?.orderNo}
+        Complete Job: {selectedJob.orderNo}
       </Typography>
 
       <form onSubmit={handleSubmit}>
